@@ -29,6 +29,15 @@ _lib = _ffi.dlopen(lib_file)
 
 #Used to case things correctly
 def _dc(x):
+    """
+    Cast input variable to double precision
+
+    Args:
+        x (float, ndarray):
+
+    Returns:
+
+    """
     if isinstance(x, list): x = np.asarray(x, dtype=np.float64, order='C')
     return _ffi.cast('double*', x.ctypes.data)
 
@@ -285,6 +294,17 @@ class hmf_emulator(Aemulator):
         return
 
     def dndM(self, Masses, redshifts):
+        """
+        Differential comoving number density of the halos
+
+        Args:
+            Masses (float or ndarray): Masses in h^-1 units for dndM calculation
+            redshifts (float or ndarray): Redshifts for evaluation
+
+        Returns:
+            ndarray: dndM values
+
+        """
         if not self.cosmology_is_set:
             raise Exception("Must set_cosmology() first.")
         Masses    = np.atleast_1d(Masses)
@@ -322,6 +342,18 @@ class hmf_emulator(Aemulator):
         return dndM_out
 
     def n_in_bins(self, Mass_bin_edges, redshifts):
+        """
+        Calculate the comoving number density of halos in a mass interval at a given redshift
+
+        Args:
+            Mass_bin_edges (ndarray): Mass bin interval; one pair per redshift input
+            redshifts (float or ndarray): Redshift(s) for evaluation
+
+        Returns:
+            float or ndarray:  Co-moving number density of halos in a mass interval at
+            a given redshift.  Units of h^-3 Mpc^-3.
+
+        """
         if not self.cosmology_is_set:
             raise Exception("Must set_cosmology() first.")
         Mass_bin_edges = np.atleast_1d(Mass_bin_edges)
@@ -352,7 +384,7 @@ class hmf_emulator(Aemulator):
             output[i] = n_bins
             continue
         if Nz == 1:
-            return output.flatten()
+            return output.flatten()[0]
         return output
             
 if __name__=="__main__":
