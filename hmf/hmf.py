@@ -293,6 +293,22 @@ class hmf_emulator(Aemulator):
             continue
         return
 
+    def dndlnM(self, Masses, redshifts):
+        """
+        Differential comoving number density of the halos per log M interval
+
+        Args:
+            Masses (float or ndarray): Masses in h^-1 units for dndM calculation
+            redshifts (float or ndarray): Redshifts for evaluation
+
+        Returns:
+            ndarray: dndlnM values
+
+        """
+        Masses = np.atleast_1d(Masses)
+        return self.dndM(Masses, redshifts) * Masses
+
+
     def dndM(self, Masses, redshifts):
         """
         Differential comoving number density of the halos
@@ -307,7 +323,7 @@ class hmf_emulator(Aemulator):
         """
         if not self.cosmology_is_set:
             raise Exception("Must set_cosmology() first.")
-        Masses    = np.atleast_1d(Masses)
+        Masses = np.atleast_1d(Masses)
         redshifts = np.atleast_1d(redshifts)
         if Masses.ndim > 1:
             raise Exception("Masses must be either scalar or 1D array.")
