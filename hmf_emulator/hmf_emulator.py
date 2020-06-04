@@ -11,16 +11,16 @@ from classy import Class
 #Create the CFFI library
 hmf_dir = os.path.dirname(__file__)
 include_dir = os.path.join(hmf_dir,'include')
-lib_file    = os.path.join(hmf_dir,'_hmf.so')
+lib_file    = os.path.join(hmf_dir,'_hmf_emulator.so')
 # Some installation (e.g. Travis with python 3.x)
 # name this e.g. _hmf.cpython-34m.so,
 # so if the normal name doesn't exist, look for something else.
 if not os.path.exists(lib_file):
-    alt_files = glob.glob(os.path.join(os.path.dirname(__file__),'_hmf*.so'))
+    alt_files = glob.glob(os.path.join(os.path.dirname(__file__),'_hmf_emulator*.so'))
     if len(alt_files) == 0:
-        raise IOError("No file '_hmf.so' found in %s"%hmf_dir)
+        raise IOError("No file '_hmf_emulator.so' found in %s"%hmf_dir)
     if len(alt_files) > 1:
-        raise IOError("Multiple files '_hmf*.so' found in %s: %s"%(hmf_dir,alt_files))
+        raise IOError("Multiple files '_hmf_emulator*.so' found in %s: %s"%(hmf_dir,alt_files))
     lib_file = alt_files[0]
 _ffi = cffi.FFI()
 for file_name in glob.glob(os.path.join(include_dir,'*.h')):
@@ -29,6 +29,15 @@ _lib = _ffi.dlopen(lib_file)
 
 #Used to case things correctly
 def _dc(x):
+    """
+    Cast input variable to double precision
+
+    Args:
+        x (float, ndarray):
+
+    Returns:
+
+    """
     if isinstance(x, list): x = np.asarray(x, dtype=np.float64, order='C')
     return _ffi.cast('double*', x.ctypes.data)
 
@@ -245,6 +254,8 @@ class hmf_emulator(Aemulator):
         self.M = np.logspace(10, 16.5, num=1000) # Msun/h
         self.computed_sigma2    = {}
         self.computed_dsigma2dM = {}
+        self.computed_sigma2_splines = {}
+        self.computed_dsigma2dM_splines = {}
         self.computed_pk        = {}
         self.cosmology_is_set = True
         return
@@ -280,14 +291,43 @@ class hmf_emulator(Aemulator):
             _lib.dsigma2dM_at_M_arr(_dc(M), NM, _dc(kh), _dc(p), Nk, Omega_m, _dc(dsigma2dM))
             self.computed_sigma2[z]    = sigma2
             self.computed_dsigma2dM[z] = dsigma2dM
+            self.computed_sigma2_splines[z] = IUS(np.log(self.M), sigma2)
+            self.computed_dsigma2dM_splines[z] = IUS(np.log(self.M), dsigma2dM)
             self.computed_pk[z] = p
             continue
         return
 
+    def dndlnM(self, Masses, redshifts):
+        """
+        Differential comoving number density of the halos per log M interval
+
+        Args:
+            Masses (float or ndarray): Masses in h^-1 units for dndM calculation
+            redshifts (float or ndarray): Redshifts for evaluation
+
+        Returns:
+            ndarray: dndlnM values
+
+        """
+        Masses = np.atleast_1d(Masses)
+        return self.dndM(Masses, redshifts) * Masses
+
+
     def dndM(self, Masses, redshifts):
+        """
+        Differential comoving number density of the halos
+
+        Args:
+            Masses (float or ndarray): Masses in h^-1 units for dndM calculation
+            redshifts (float or ndarray): Redshifts for evaluation
+
+        Returns:
+            ndarray: dndM values
+
+        """
         if not self.cosmology_is_set:
             raise Exception("Must set_cosmology() first.")
-        Masses    = np.atleast_1d(Masses)
+        Masses = np.atleast_1d(Masses)
         redshifts = np.atleast_1d(redshifts)
         if Masses.ndim > 1:
             raise Exception("Masses must be either scalar or 1D array.")
@@ -308,8 +348,8 @@ class hmf_emulator(Aemulator):
         dndM_out = np.zeros((Nz, NM))
         for i,z in enumerate(redshifts):
             d,e,f,g = self.predict_massfunction_parameters(z)
-            sigma2_spline    = IUS(np.log(self.M), self.computed_sigma2[z])
-            dsigma2dM_spline = IUS(np.log(self.M), self.computed_dsigma2dM[z])
+            sigma2_spline = self.computed_sigma2_splines[z]
+            dsigma2dM_spline = self.computed_dsigma2dM_splines[z]
             sigma2    = sigma2_spline(lnMasses)
             dsigma2dM = dsigma2dM_spline(lnMasses)
             output = np.zeros_like(Masses)
@@ -322,6 +362,18 @@ class hmf_emulator(Aemulator):
         return dndM_out
 
     def n_in_bins(self, Mass_bin_edges, redshifts):
+        """
+        Calculate the comoving number density of halos in a mass interval at a given redshift
+
+        Args:
+            Mass_bin_edges (ndarray): Mass bin interval; one pair per redshift input
+            redshifts (float or ndarray): Redshift(s) for evaluation
+
+        Returns:
+            float or ndarray:  Co-moving number density of halos in a mass interval at
+            a given redshift.  Units of h^-3 Mpc^-3.
+
+        """
         if not self.cosmology_is_set:
             raise Exception("Must set_cosmology() first.")
         Mass_bin_edges = np.atleast_1d(Mass_bin_edges)
@@ -352,7 +404,7 @@ class hmf_emulator(Aemulator):
             output[i] = n_bins
             continue
         if Nz == 1:
-            return output.flatten()
+            return output.flatten()[0]
         return output
             
 if __name__=="__main__":
